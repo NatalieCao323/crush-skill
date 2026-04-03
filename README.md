@@ -1,25 +1,27 @@
 # crush.skill
 
-> 前任.skill 说：我会为了你一万次回到那个夏天。
-> crush.skill 想问：那个夏天，ta 到底有没有爱过你？
+> "前任.skill 说：我会为了你一万次回到那个夏天。 但 crush.skill 想问：那个夏天，ta 到底有没有爱过你？"
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-green.svg)](https://python.org)
-[![Claude Code](https://img.shields.io/badge/Claude-Code-orange.svg)](https://claude.ai/code)
-[![OpenClaw](https://img.shields.io/badge/OpenClaw-Compatible-purple.svg)](https://openclaw.ai)
-[![AgentSkills](https://img.shields.io/badge/AgentSkills-Standard-lightgrey.svg)](https://agentskills.dev)
+![License MIT](https://img.shields.io/badge/License-MIT-blue.svg) ![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-green.svg) ![Claude Code](https://img.shields.io/badge/Claude-Code-orange.svg) ![AgentSkills Standard](https://img.shields.io/badge/AgentSkills-Standard-purple.svg)
 
 *Inspired by [ex-skill](https://github.com/therealXiaomanChu/ex-skill)*
 
-[安装](#安装) · [使用](#使用) · [使用案例](#使用案例) · [详细安装说明](INSTALL.md) · [English](README_EN.md)
+[安装](#安装) · [使用](#使用) · [示例](#使用案例) · [详细安装说明](INSTALL.md) · [English](README_EN.md)
 
 ---
 
-你们还没在一起。但你已经开始想，ta 发消息前是不是也犹豫过。
+你们还没在一起。
+但你已经开始想 ta 发消息前要不要先想好说什么。
+你记得 ta 说"改天吧"的语气，和说"要是你在就好了"时的语气，完全不一样。
+你不确定 ta 是不是也在想你。
+你只是想知道，这段暧昧，到底值不值得继续。
 
-你记得 ta 说"改天吧"的语气，和说"要是你在就好了"时的语气，完全不一样。你不确定 ta 是不是也在想你。你只是想知道，这段暧昧，到底值不值得继续。
+**把聊天记录喂给 AI，不是为了追到 ta，是为了看清楚。**
 
-把聊天记录喂给 AI，不是为了追到 ta，是为了看清楚。
+提供聊天记录（微信、iMessage、短信）、截图、社交媒体，加上你的主观描述
+生成一个像 ta 一样说话的 AI crush
+用贝叶斯概率分析 ta 的真实意图
+诊断 ta 的依恋类型，给出下次聊天的逐字话术
 
 ---
 
@@ -30,6 +32,10 @@
 **演习模式**：AI 完全模仿对方的语气、回复节奏、常用表达，让你在实战前先彩排，避免踩雷。
 
 **记忆引擎**：每条记忆都有三个贝叶斯标签——先验置信度、时间衰减系数、情绪关联强度。AI 像人脑一样，有选择性地记忆和遗忘。
+
+**截图分析**：上传聊天截图，AI 自动识别文字内容，提取消息并进行贝叶斯分析，无需手动导出。
+
+**主观描述**：用自己的语言描述 ta 的性格、口头禅、行为模式，AI 将其融入人格模型，补充聊天记录无法捕捉的细节。
 
 ---
 

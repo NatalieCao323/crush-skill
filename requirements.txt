@@ -1,9 +1,13 @@
-# 暧昧.skill 依赖
-# 所有依赖均为 Python 标准库，无需额外安装
+# crush.skill 依赖
 # Python 3.9+ 即可运行
 
-# 可选：如需解析 SQLite 格式的 PyWxDump 导出
-# sqlite3 (内置)
+# 照片 EXIF / GPS 时间线分析（photo_analyzer.py）
+# 安装命令：pip3 install Pillow
+Pillow>=9.0.0
 
 # 可选：如需更精准的中文分词（口头禅分析）
+# 安装命令：pip3 install jieba
 # jieba>=0.42.1
+
+# 注：wechat_parser.py / qq_parser.py / bayesian_tagger.py / skill_writer.py
+# 均只使用 Python 标准库，无需额外安装。

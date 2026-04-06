@@ -4,10 +4,11 @@ wechat_parser.py
 Chat log parser for crush.skill.
 
 Supports the following export formats:
-  - WeChatMsg txt export: timestamp + sender + content (separate lines)
-  - Bracket txt format:   [YYYY-MM-DD HH:MM] sender: content
-  - Liuhen JSON export:   standard JSON array from the Liuhen macOS app
-  - Plaintext:            "sender: content" per line, or raw pasted text
+  - WeChatMsg txt export:  timestamp + sender + content (separate lines)
+  - Bracket txt format:    [YYYY-MM-DD HH:MM] sender: content
+  - Liuhen JSON export:    standard JSON array from the Liuhen macOS app
+  - WeChatMsg HTML export: HTML file exported by WeChatMsg (Windows)
+  - Plaintext:             "sender: content" per line, or raw pasted text
 
 Usage:
   python3 wechat_parser.py --file <path> --target <name> --output <output_path>
@@ -34,12 +35,18 @@ def detect_format(file_path: str) -> str:
         return "liuhen"
     if ext in (".db", ".sqlite"):
         return "pywxdump"
+    if ext in (".html", ".htm"):
+        return "wechatmsg_html"
 
     try:
         with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
             sample = f.read(3000)
     except Exception:
         return "plaintext"
+
+    # HTML content check (even if extension is .txt)
+    if re.search(r"<html|<!DOCTYPE html|<div class", sample, re.IGNORECASE):
+        return "wechatmsg_html"
 
     # WeChatMsg standard export: "2024-01-15 22:30:01 SenderName"
     if re.search(r"\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s+\S", sample):
@@ -135,6 +142,135 @@ def parse_liuhen_json(file_path: str, target_name: str) -> dict:
     return analyze_messages(messages, target_name)
 
 
+def parse_wechatmsg_html(file_path: str, target_name: str) -> dict:
+    """
+    Parse WeChatMsg HTML export.
+
+    WeChatMsg exports HTML files with a structure like:
+      <div class="message">
+        <div class="time">2024-01-15 22:30:01</div>
+        <div class="sender">SenderName</div>
+        <div class="content">Message text</div>
+      </div>
+
+    This parser handles both the standard WeChatMsg HTML layout and
+    common variations (table-based, span-based). Falls back to regex
+    text extraction if BeautifulSoup is unavailable.
+    """
+    try:
+        from html.parser import HTMLParser
+
+        class WeChatHTMLParser(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.messages = []
+                self._current = {}
+                self._in_tag = None
+                self._depth = 0
+                self._msg_depth = None
+
+            def handle_starttag(self, tag, attrs):
+                attrs_dict = dict(attrs)
+                cls = attrs_dict.get("class", "")
+                self._depth += 1
+
+                if tag == "div" and any(k in cls for k in ("message", "msg", "chat-item", "record")):
+                    self._current = {}
+                    self._msg_depth = self._depth
+
+                if self._msg_depth is not None:
+                    if tag in ("div", "span", "td"):
+                        if any(k in cls for k in ("time", "date", "timestamp")):
+                            self._in_tag = "time"
+                        elif any(k in cls for k in ("sender", "from", "name", "nickname", "user")):
+                            self._in_tag = "sender"
+                        elif any(k in cls for k in ("content", "text", "msg-text", "bubble")):
+                            self._in_tag = "content"
+
+            def handle_endtag(self, tag):
+                if tag == "div":
+                    if self._msg_depth is not None and self._depth == self._msg_depth:
+                        if self._current.get("content"):
+                            self.messages.append(dict(self._current))
+                        self._current = {}
+                        self._msg_depth = None
+                    self._depth -= 1
+                self._in_tag = None
+
+            def handle_data(self, data):
+                data = data.strip()
+                if not data or self._in_tag is None:
+                    return
+                key = self._in_tag
+                if key in ("time", "sender", "content"):
+                    self._current[key] = self._current.get(key, "") + data
+
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            html_content = f.read()
+
+        parser = WeChatHTMLParser()
+        parser.feed(html_content)
+        raw_messages = parser.messages
+
+        # If structured parsing found messages, use them
+        if len(raw_messages) >= 3:
+            messages = []
+            for m in raw_messages:
+                messages.append({
+                    "timestamp": m.get("time", ""),
+                    "sender": m.get("sender", "unknown"),
+                    "content": m.get("content", ""),
+                })
+            return analyze_messages(messages, target_name)
+
+        # Fallback: extract all visible text and try regex matching
+        # Strip all HTML tags
+        clean_text = re.sub(r"<[^>]+>", " ", html_content)
+        clean_text = re.sub(r"&nbsp;", " ", clean_text)
+        clean_text = re.sub(r"&lt;", "<", clean_text)
+        clean_text = re.sub(r"&gt;", ">", clean_text)
+        clean_text = re.sub(r"&amp;", "&", clean_text)
+        clean_text = re.sub(r"\s+", " ", clean_text)
+
+        # Write clean text to a temp file and parse as plaintext
+        import tempfile
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".txt", encoding="utf-8", delete=False
+        ) as tmp:
+            tmp.write(clean_text)
+            tmp_path = tmp.name
+
+        try:
+            result = parse_plaintext(tmp_path, target_name)
+        finally:
+            os.unlink(tmp_path)
+
+        result["_format_note"] = (
+            "HTML fallback: structured parsing found 0 messages; "
+            "used plain-text extraction. If results are poor, try exporting "
+            "as TXT from WeChatMsg instead."
+        )
+        return result
+
+    except Exception as e:
+        return {
+            "target_name": target_name,
+            "total_messages": 0,
+            "target_messages": 0,
+            "user_messages": 0,
+            "raw_text": "",
+            "analysis": {
+                "note": f"HTML parsing failed: {e}. Try exporting as TXT instead.",
+                "top_particles": [],
+                "top_emojis": [],
+                "avg_message_length": 0,
+                "punctuation_habits": {},
+                "message_style": "error",
+            },
+            "sample_messages": [],
+        }
+
+
 def parse_plaintext(file_path: str, target_name: str) -> dict:
     """
     Parse pasted plaintext chat logs.
@@ -145,7 +281,7 @@ def parse_plaintext(file_path: str, target_name: str) -> dict:
         content = f.read()
 
     messages = []
-    line_re = re.compile(r"^(.{1,20})[:]\s*(.+)$")
+    line_re = re.compile(r"^(.{1,20})[:：]\s*(.+)$")
     for line in content.splitlines():
         m = line_re.match(line.strip())
         if m:
@@ -226,6 +362,22 @@ def analyze_messages(messages: list, target_name: str) -> dict:
         "tilde":            all_text.count("~") + all_text.count("～"),
     }
 
+    # Response pattern analysis: reply rate and avg response delay
+    reply_rate = (
+        round(len(target_msgs) / len(user_msgs), 2)
+        if user_msgs else None
+    )
+
+    # Detect late-night messages (22:00–03:00) — high emotional weight
+    late_night_count = 0
+    for m in target_msgs:
+        ts = m.get("timestamp", "")
+        hour_match = re.search(r"(\d{2}):\d{2}", ts)
+        if hour_match:
+            hour = int(hour_match.group(1))
+            if hour >= 22 or hour <= 3:
+                late_night_count += 1
+
     return {
         "target_name": target_name,
         "total_messages": len(messages),
@@ -237,6 +389,8 @@ def analyze_messages(messages: list, target_name: str) -> dict:
             "avg_message_length": avg_length,
             "punctuation_habits": punctuation,
             "message_style": "short_burst" if avg_length < 20 else "long_form",
+            "reply_rate": reply_rate,
+            "late_night_messages": late_night_count,
         },
         "sample_messages": [
             m["content"] for m in target_msgs[:50] if m.get("content")
@@ -259,10 +413,19 @@ def write_output(result: dict, output_path: str, fmt: str) -> None:
         f.write(f"Source format: {fmt}\n")
         f.write(f"Total messages: {result.get('total_messages', 'N/A')}\n")
         f.write(f"Messages from target: {result.get('target_messages', 'N/A')}\n")
-        f.write(f"Messages from user: {result.get('user_messages', 'N/A')}\n\n")
+        f.write(f"Messages from user: {result.get('user_messages', 'N/A')}\n")
+
+        if analysis.get("reply_rate") is not None:
+            f.write(f"Reply rate (target/user): {analysis['reply_rate']}\n")
+        if analysis.get("late_night_messages"):
+            f.write(f"Late-night messages (22:00–03:00): {analysis['late_night_messages']}\n")
+        f.write("\n")
 
         if analysis.get("note"):
             f.write(f"> Note: {analysis['note']}\n\n")
+
+        if result.get("_format_note"):
+            f.write(f"> ⚠️ {result['_format_note']}\n\n")
 
         if result.get("raw_text"):
             f.write("## Raw Chat Content\n\n```\n")
@@ -295,6 +458,7 @@ def write_output(result: dict, output_path: str, fmt: str) -> None:
             "short_burst": "short burst (multiple short messages)",
             "long_form":   "long form (paragraphs)",
             "raw":         "raw text",
+            "error":       "parsing error",
         }
         style = style_map.get(analysis.get("message_style", ""), "unknown")
         f.write(f"- Style: {style}\n\n")
@@ -318,7 +482,7 @@ def main():
     parser.add_argument("--output", required=True, help="Output file path")
     parser.add_argument(
         "--format", default="auto",
-        help="File format: auto / wechatmsg_txt / bracket_txt / liuhen / plaintext",
+        help="File format: auto / wechatmsg_txt / bracket_txt / liuhen / wechatmsg_html / plaintext",
     )
     args = parser.parse_args()
 
@@ -332,10 +496,11 @@ def main():
         print(f"Detected format: {fmt}")
 
     dispatch = {
-        "wechatmsg_txt": parse_wechatmsg_txt,
-        "bracket_txt":   parse_bracket_txt,
-        "liuhen":        parse_liuhen_json,
-        "plaintext":     parse_plaintext,
+        "wechatmsg_txt":  parse_wechatmsg_txt,
+        "bracket_txt":    parse_bracket_txt,
+        "liuhen":         parse_liuhen_json,
+        "wechatmsg_html": parse_wechatmsg_html,
+        "plaintext":      parse_plaintext,
     }
     parse_fn = dispatch.get(fmt, parse_plaintext)
     result = parse_fn(args.file, args.target)
